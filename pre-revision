@@ -1,0 +1,212 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Nov 23 15:22:10 2019
+
+@author: dmase
+"""
+import numpy as np
+from numpy import genfromtxt
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import cv2
+import glob #library assositated with file identification
+import os  #''
+from scipy.optimize import curve_fit
+import scipy as sp
+import re
+
+def circle_finder():
+    img_color = cv2.imread('test.png') #test.png is created in last file function
+    img = cv2.medianBlur(img_color,5) #blurs image to make processing easier
+    img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY) #converts to grayscale
+    img = np.invert(img)
+#    cv2.imshow('image',img) #opens image
+    cv2.waitKey(1000) #waits for image to render
+
+    rows = img.shape[0]
+    print(rows,img.shape[1])
+    
+    def f1(circles):
+        
+        if circles is not None: 
+            print('found')
+            circles = np.uint16(np.around(circles))
+            
+            for i in circles[0, :]:
+                center = (i[0], i[1])
+                # circle center
+                cv2.circle(img, center, 1, (0, 100, 100), 3)
+                # circle outline
+                radius = i[2]
+                cv2.circle(img, center, radius, (255, 0, 255), 1)
+        
+        else: print('not found')
+#        cv2.imshow("detected circles", img)
+        cv2.imwrite('detected circles.png', img) 
+        cv2.waitKey(1000)
+        return(radius,center)
+    
+    def f2(circles,r):
+        
+        if circles is not None: 
+            print('found')
+            circles = np.uint16(np.around(circles))
+            
+            for i in circles[0, :]:
+                center = (i[0], i[1])
+                # circle center
+                cv2.circle(img, center, 1, (0, 100, 100), 3)
+                # circle outline
+                radius = r
+                cv2.circle(img, center, radius, (255, 0, 255), 1)
+        # Simple binary threshold
+        
+        else: print('not found')
+#        cv2.imshow("detected circles", img) #visual (if not working uncomment)
+#        cv2.imwrite('detected circles.png', img) 
+#        cv2.waitKey(1000)
+    
+    circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT,1, rows/8,
+                               param1 = 140, param2 = 50, minRadius = 20, maxRadius = 60) #parameters for inner circle 
+    print(circles)
+    height,width = img.shape
+    radius , center = f1(circles)[0], f1(circles)[1]  #innermost circle
+    print(center)
+    r_offset1 = radius + int(radius/1.69) #outer inner circle radius is a multiple of inner radius
+    r_offset2 = radius + int(radius*1.3) #inner outer cirlce
+    r_offset3 = radius + int(radius*2.5) #outermost circle
+    f2(circles,r_offset1)
+    f2(circles,r_offset2)
+    f2(circles,r_offset3)
+    print(r_offset1, r_offset2, r_offset3) #feed this data into temp reader to form boundary circles
+    return(radius,r_offset1,r_offset2,r_offset3,center)
+
+#def last_file(): #opens last file in folder since it will have the highest contrast, then uses that file to id circles
+#    numbers = re.compile(r'(\d+)')
+#    list_of_files = glob.glob('C:/Users/dmase/Desktop/thisisthedata/*', key = numericalSort) # * means all if need specific format then *.csv
+#    latest_file = list_of_files
+##    latest_file = max(list_of_files, key=os.path.getctime)
+#    print(latest_file)
+#    data = genfromtxt(latest_file, delimiter=',',skip_header = 3) #should open last file because it will have the highest contrast
+#    data = np.delete(data,0,1)
+#    data = np.delete(data,-1,1)
+#    plt.imsave('test.png',data)
+#    plt.imshow(data)
+#    plt.show()
+def last_file(): #opens last file in folder since it will have the highest contrast, then uses that file to id circles
+    numbers = re.compile(r'(\d+)')
+    def numericalSort(value):
+        parts = numbers.split(value)
+        parts[1::2] = map(int, parts[1::2])
+        return parts
+    list_of_files = glob.glob('C:/Users/dmase/Desktop/thisisthedata/*.csv') # * means all if need specific format then *.csv
+    latest_file = sorted(list_of_files, key=numericalSort)
+    print(latest_file)
+    data = genfromtxt(latest_file[-1], delimiter=',',skip_header = 3) #should open last file because it will have the highest contrast
+    data = np.delete(data,0,1)
+    data = np.delete(data,-1,1)
+    plt.imsave('test.png',data)
+    plt.imshow(data)
+    plt.show()
+    return latest_file
+last_file()
+def iso(circle_info,list_of_files): #isolates important regions of image and plots data. 
+    xc = circle_info[4][0]
+    yc = circle_info[4][1]
+    r, r1 , r2 , r3 = circle_info[0], circle_info[1], circle_info[2], circle_info[3]
+#    print(list_of_files)
+    center_point = [] #data for single point vs frame
+    center_point1 = [] #for speed 
+    all_data = [] #data for each frame
+    step = 10 #frames to skip
+    print('r2:',r2,'r3:',r3)
+    for l in range(50,len(list_of_files),step): #loop that runs through each frame
+   
+#    for l in range(200,400,step):
+        data = genfromtxt(list_of_files[l], delimiter=',',skip_header = 3) #should open last file because it will have the highest contrast
+        data = np.delete(data,0,1)
+        data = np.delete(data,-1,1)
+#        plt.imshow(data)
+        plt.imsave('test.png',data)
+        img = mpimg.imread('test.png')
+        X = np.linspace(0,len(img[0,:]),len(img[0,:]))
+        Y = np.linspace(0,len(img[:,1]),len(img[:,1]))
+        X , Y = np.meshgrid(X , Y) 
+        grid = np.sqrt((X-xc)**2+(Y-yc)**2) #array of distances from center for each pixel 
+#        print(list_of_files[i])
+        temp_graph = [] #array for storing 2d slice of ring
+        temp_graph1 = []#same as temp graph but further along the ring (for calculating speed)
+        for i in range(0,len(grid[0,:])): #blacks out everything not of intrest
+            for j in range(0,len(grid[:,0])):
+                theta = np.arctan2(i-xc,j-yc)
+#                if grid[j,i] < r and grid[j,i] < r1 or grid[j,i] > r1 and grid[j,i] < r2 or grid[j,i] > r3 or theta > 0 and theta < np.pi or theta < -np.pi/2 and theta > -np.pi: 
+#                    img[j,i] = 0
+                if theta == -np.pi/4 and grid[j,i] < r2 and grid[j,i] < r3: #where to slice the ring (outring only) 
+                    temp_graph.append(data[j,i])
+                if theta == 0 and grid[j,i] < r2 and grid[j,i] < r3:
+                    temp_graph1.append(data[j,i])
+        center_point.append(temp_graph[int(len(temp_graph)/2)])#records value for single point
+        center_point1.append(temp_graph1[int(len(temp_graph1)/2)])
+        print(temp_graph1)
+        all_data.append(temp_graph)
+        plt.scatter(range(0,len(temp_graph)),temp_graph)
+
+        plt.title('temp vs pixel from outer circle slice starting at inner edge')
+        plt.xlabel('pixel')
+        plt.ylabel('temp (degrees C)')
+        plt.show()
+        print(np.mean(temp_graph))
+        print('frame:',l)
+        print('file:',list_of_files[l])
+
+#        plt.imshow(img)
+#        plt.show()
+#        plt.imsave('isolated.png',img)
+    plt.scatter(range(0,len(center_point)),center_point)
+    plt.scatter(range(0,len(center_point1)),center_point1)
+    plt.xlabel('frame')
+    plt.ylabel('temp in degrees C')
+    plt.title('temp of single pixel vs frame')
+    plt.show()
+    np.savetxt('curve1',center_point)
+    np.savetxt('curve2',center_point1)
+    temp_frame = np.zeros((24+5))
+    for t in range(-5,23):
+        c1, c2 = True, True 
+        for j in range(0,len(center_point)):
+            if center_point[j] <= t and c1 == True:
+                print(t,len(center_point1[0:j]*step))
+                temp_frame1 = len(center_point1[0:j]*step) 
+                c1 = False
+            if center_point1[j] <= t and c2 == True:
+                print(t,len(center_point1[0:j])*step)
+                c2 = False 
+                temp_frame2 = len(center_point1[0:j]*step)
+        temp_frame[t] = np.abs(temp_frame1-temp_frame2)
+    print(temp_frame)
+    plt.plot(range(0,len(temp_frame)),temp_frame)
+    plt.title('time delay in temperature')
+    plt.xlabel('temp (0 = -5)')
+    plt.ylabel('frame')
+    plt.show()
+    print('average time delay in frames:',int(np.average(temp_frame)))
+#    def func1(x,a,b):
+#        """Model function: quadratic"""
+#        return a*sp.special.erf(x)+b
+#    pp = 2
+#    guesses = [3,50]
+#    x_data = np.array(range(0,len(center_point)))
+#    (p0,p1), cc = curve_fit(func1,x_data,center_point, p0 = guesses)
+#    x_data1 = np.array(range(0,len(center_point1)))
+    # Plot data and model together:
+#    xmod = np.linspace(x_data[0],x_data[-1],100)
+#    ymod = func1(xmod,p0,p1)
+#    plt.plot(xmod,ymod)
+#    x_data1 = np.array(range(0,len(center_point)))
+#    popt, pcov = curve_fit(func1,x_data1, center_point)
+#    plt.plot(x_data1, func1(x_data1, *popt))
+    return all_data
+
+list_of_files = last_file()
+circle_info = circle_finder() #shape (radius,r_offset1,r_offset2,r_offset3,center)
+all_data = iso(circle_info,list_of_files)
